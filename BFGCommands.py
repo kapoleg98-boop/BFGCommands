@@ -4,65 +4,151 @@
 from .. import loader
 import asyncio
 import re
+from datetime import datetime
 
 @loader.tds
 class BFGCommandsMod(loader.Module):
-    """BFGCommands — выдача валюты, фарм, шахта через @bfgproject
+    """BFGCommands — выдача валюты, фарм, шахта
     
     Разработчик: Капранов Олег (@Anime12345686)
-    Бета-тестер: @Sun_bright_fit
     Discord: dimonq195
     Email: kapoleg98@gmail.com
     
+    © 2026 Капранов Олег. Все права защищены.
+    
     Команды:
-    .выдать @user <сумма> — выдать валюту
-    .bfgfarm <число> — купить N видеокарт
-    .bfgfarm <время> — автофарм (10с/5м/1ч/2д)
-    .bfgfarm шахта — копать материю
-    .bfgfarm стоп — остановить фарм
+    .выдать @user <сумма>
+    .bfgfarm шахта/стоп
+    .bfgbal — баланс
+    .bfgbal @user — чужой баланс
+    .bfgautofarm <минуты> — автошахта
     """
     strings = {"name": "BFGCommands"}
 
     OWNER_ID = 6488468088
+    MAX_WARNINGS = 2
 
     def __init__(self):
         self.bot_name = "@bfgproject"
         self.wait_timeout = 10
         self.poll_interval = 1.0
-        self.farm_cycle_task = None
         self.mining_task = None
         self.mining_active = False
+        self.auto_farm_task = None
+        self.auto_farm_active = False
+        self._w = {}
+        self._b = []
+        self._l = []
 
-    def _check_access(self, message):
-        sender = self._get_sender_id(message)
-        if sender == self.OWNER_ID:
-            return True
-        try:
-            protect = self.lookup("BFGProtect")
-            if protect:
-                if not protect.is_owner(sender) and protect.is_blacklisted(sender):
-                    return False
-        except:
-            pass
-        return True
+    def _x(self, uid):
+        if uid == self.OWNER_ID:
+            return False
+        return uid in self._b
 
-    async def выдатьcmd(self, message):
-        """.выдать @user <сумма> — выдать валюту"""
+    async def bfgwarncmd(self, message):
         client = message._client
         chat_id = message.chat.id
-
-        if not self._check_access(message):
-            await self._temp_msg(client, chat_id, (
-                "🚫 <b>ДОСТУП ЗАБЛОКИРОВАН</b>\n\n"
-                "Вы в чёрном списке.\n"
-                "Причина: нарушение авторских прав.\n\n"
-                "📩 @Anime12345686 | dimonq195 | kapoleg98@gmail.com"
-            ), delay=10)
-            return
-
-        args_text = message.text.split(maxsplit=1)
+        sender = self._get_sender_id(message)
         await message.delete()
+        if sender != self.OWNER_ID:
+            return
+        args = message.text.split()
+        if len(args) < 2:
+            return
+        username = args[1].lstrip('@')
+        try:
+            target = await client.get_entity(username)
+        except:
+            return
+        uid = target.id
+        user_str = f"@{target.username}" if target.username else f"ID:{uid}"
+        date_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+        rid = datetime.now().strftime("%y%m%d%H%M%S")
+        cur = self._w.get(uid, 0)
+        new = cur + 1
+        self._w[uid] = new
+        if new > self.MAX_WARNINGS:
+            if uid not in self._b:
+                self._b.append(uid)
+            msg = f"🚫 ЗАБЛОКИРОВАН\n{user_str}\nСвязь: @Anime12345686 | kapoleg98@gmail.com\nДата: {date_str}\nID: {rid}"
+        elif new == 1:
+            msg = f"⚠️ ПРЕД №1\n{user_str}\nПравообладатель: Капранов Олег.\nСрок: 48 часов.\nСвязь: @Anime12345686 | kapoleg98@gmail.com\nДата: {date_str}\nID: {rid}"
+        else:
+            msg = f"🚨 ПРЕД №2 (ПОСЛЕДНЕЕ)\n{user_str}\nСвязь: @Anime12345686 | kapoleg98@gmail.com\nДата: {date_str}\nID: {rid}"
+        try:
+            await client.send_message(uid, msg)
+        except:
+            pass
+        try:
+            await client.send_message("me", f"📋 {user_str} | {date_str} | ID:{rid}")
+        except:
+            pass
 
+    async def bfgbancmd(self, message):
+        client = message._client
+        sender = self._get_sender_id(message)
+        await message.delete()
+        if sender != self.OWNER_ID:
+            return
+        args = message.text.split()
+        if len(args) < 2:
+            return
+        username = args[1].lstrip('@')
+        try:
+            target = await client.get_entity(username)
+        except:
+            return
+        if target.id not in self._b:
+            self._b.append(target.id)
+        self._w[target.id] = self.MAX_WARNINGS + 1
+
+    async def bfgunbancmd(self, message):
+        client = message._client
+        sender = self._get_sender_id(message)
+        await message.delete()
+        if sender != self.OWNER_ID:
+            return
+        args = message.text.split()
+        if len(args) < 2:
+            return
+        username = args[1].lstrip('@')
+        try:
+            target = await client.get_entity(username)
+        except:
+            return
+        if target.id in self._b:
+            self._b.remove(target.id)
+        if target.id in self._w:
+            del self._w[target.id]
+
+    async def bfglistcmd(self, message):
+        client = message._client
+        chat_id = message.chat.id
+        sender = self._get_sender_id(message)
+        await message.delete()
+        if sender != self.OWNER_ID:
+            return
+        if not self._b:
+            return
+        text = "📋 ЧС:\n\n"
+        for uid in self._b:
+            try:
+                u = await client.get_entity(uid)
+                un = f"@{u.username}" if u.username else f"ID:{uid}"
+            except:
+                un = f"ID:{uid}"
+            text += f"🚫 {un}\n"
+        await self._temp_msg(client, chat_id, text, delay=15)
+
+    async def выдатьcmd(self, message):
+        client = message._client
+        chat_id = message.chat.id
+        sender = self._get_sender_id(message)
+        await message.delete()
+        if self._x(sender):
+            await self._temp_msg(client, chat_id, "🚫 Доступ заблокирован\nСвязь: @Anime12345686 | kapoleg98@gmail.com", delay=10)
+            return
+        args_text = message.text.split(maxsplit=1)
         try:
             if len(args_text) < 2:
                 await self._temp_msg(client, chat_id, "❌ .выдать @user <сумма>")
@@ -73,124 +159,165 @@ class BFGCommandsMod(loader.Module):
                 return
             username = parts[0].lstrip('@')
             if not username:
-                await self._temp_msg(client, chat_id, "❌ Имя пользователя не указано")
+                await self._temp_msg(client, chat_id, "❌ Имя не указано")
                 return
             amount = self._extract_number(parts[1])
             if amount is None:
                 await self._temp_msg(client, chat_id, "❌ Неверная сумма")
                 return
-
             target = await client.get_entity(username)
             tg_id = target.id
-
             await client.send_message(self.bot_name, f"профиль {tg_id}")
-            profile_id, raw_answer = await self._wait_for_profile_id(client, tg_id)
-
+            profile_id, raw = await self._wait_for_profile_id(client, tg_id)
             if profile_id is None:
-                if raw_answer:
-                    await self._temp_msg(client, chat_id, f"❌ ID не найден:\n{raw_answer[:200]}", delay=10)
-                else:
-                    await self._temp_msg(client, chat_id, "❌ Бот не ответил")
+                msg = f"❌ ID не найден:\n{raw[:200]}" if raw else "❌ Бот не ответил"
+                await self._temp_msg(client, chat_id, msg, delay=10)
                 return
-
             await client.send_message(chat_id, f"Выдать {amount} {profile_id}")
-
         except Exception as e:
-            await self._temp_msg(client, chat_id, f"🚫 Ошибка: {str(e)}", delay=10)
+            await self._temp_msg(client, chat_id, f"🚫 {e}", delay=10)
 
     async def bfgfarmcmd(self, message):
-        """.bfgfarm <число>/<время>/шахта/стоп"""
         client = message._client
         chat_id = message.chat.id
-
-        if not self._check_access(message):
-            await self._temp_msg(client, chat_id, (
-                "🚫 <b>ДОСТУП ЗАБЛОКИРОВАН</b>\n\n"
-                "Вы в чёрном списке.\n"
-                "Причина: нарушение авторских прав.\n\n"
-                "📩 @Anime12345686 | dimonq195 | kapoleg98@gmail.com"
-            ), delay=10)
+        sender = self._get_sender_id(message)
+        await message.delete()
+        if self._x(sender):
+            await self._temp_msg(client, chat_id, "🚫 Доступ заблокирован\nСвязь: @Anime12345686 | kapoleg98@gmail.com", delay=10)
             return
-
-        args = message.text.split(maxsplit=1)
-        if len(args) < 2:
-            await self._temp_msg(client, chat_id, "❌ Укажите: число, время (10с/5м/1ч/2д), шахта или стоп")
+        text = message.text.strip()
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            await self._temp_msg(client, chat_id, "❌ .bfgfarm шахта/стоп")
             return
-
-        arg = args[1].strip().lower()
-
+        arg = parts[1].strip().lower()
         if arg == "шахта":
             if self.mining_active:
                 self.mining_active = False
                 if self.mining_task:
                     self.mining_task.cancel()
                     self.mining_task = None
-                await self._temp_msg(client, chat_id, "⛏ Шахта остановлена", delay=4)
+                await self._temp_msg(client, chat_id, "⛏ Шахта: стоп", delay=4)
             else:
                 self.mining_active = True
                 self.mining_task = asyncio.ensure_future(self._mining_loop(client))
-                await self._temp_msg(client, chat_id, "⛏ Шахта запущена", delay=4)
+                await self._temp_msg(client, chat_id, "⛏ Шахта: старт", delay=4)
             return
-
         if arg in ("стоп", "stop"):
-            if self.farm_cycle_task:
-                self.farm_cycle_task.cancel()
-                self.farm_cycle_task = None
-                await self._temp_msg(client, chat_id, "🔄 Ферма остановлена", delay=4)
-            else:
-                await self._temp_msg(client, chat_id, "❌ Нет активного цикла")
+            if self.mining_active:
+                self.mining_active = False
+                if self.mining_task:
+                    self.mining_task.cancel()
+                    self.mining_task = None
+            if self.auto_farm_active:
+                self.auto_farm_active = False
+                if self.auto_farm_task:
+                    self.auto_farm_task.cancel()
+                    self.auto_farm_task = None
+            await self._temp_msg(client, chat_id, "🔄 Всё остановлено", delay=4)
             return
+        await self._temp_msg(client, chat_id, "❌ Неверно. Доступно: шахта, стоп")
 
-        if arg.isdigit():
-            await self._farm_buy_cards(client, chat_id, int(arg))
+    async def bfgbalcmd(self, message):
+        client = message._client
+        chat_id = message.chat.id
+        sender = self._get_sender_id(message)
+        await message.delete()
+        if self._x(sender):
+            await self._temp_msg(client, chat_id, "🚫 Доступ заблокирован\nСвязь: @Anime12345686 | kapoleg98@gmail.com", delay=10)
             return
-
-        time_seconds = self._parse_time(arg)
-        if time_seconds is not None:
-            if self.farm_cycle_task:
-                self.farm_cycle_task.cancel()
-            self.farm_cycle_task = asyncio.ensure_future(
-                self._farm_cycle_loop(client, chat_id, time_seconds)
-            )
-            await self._temp_msg(client, chat_id, f"🔁 Ферма-цикл: интервал {arg}", delay=4)
-            return
-
-        await self._temp_msg(client, chat_id, "❌ Неверный аргумент")
-
-    async def _farm_buy_cards(self, client, chat_id, count):
-        await client.send_message(self.bot_name, "моя ферма")
-        bot_msg = await self._wait_for_bot_response(client, self.bot_name)
-        if not bot_msg:
+        args = message.text.split()
+        if len(args) >= 2:
+            username = args[1].lstrip('@')
+            try:
+                target = await client.get_entity(username)
+            except:
+                await self._temp_msg(client, chat_id, f"❌ @{username} не найден")
+                return
+        else:
+            try:
+                target = await client.get_entity(sender)
+            except:
+                try:
+                    target = await client.get_me()
+                except:
+                    await self._temp_msg(client, chat_id, "❌ Не удалось определить пользователя")
+                    return
+        tg_id = target.id
+        user_str = f"@{target.username}" if target.username else f"ID:{tg_id}"
+        await client.send_message(self.bot_name, f"профиль {tg_id}")
+        await asyncio.sleep(2)
+        msgs = await client.get_messages(self.bot_name, limit=1)
+        if not msgs or not msgs[0].text:
             await self._temp_msg(client, chat_id, "❌ Бот не ответил")
             return
-
-        if not await self._click_button(bot_msg, "💰Собрать прибыль"):
-            await self._temp_msg(client, chat_id, "⚠ Кнопка сбора не найдена")
+        text = msgs[0].text
+        lines = text.split('\n')
+        money = None
+        for line in lines:
+            line = line.strip()
+            if '💰' in line and 'денег' in line.lower():
+                money = line.replace('💰', '').replace('Денег:', '').replace('денег:', '').strip()
+                break
+        if money:
+            await self._temp_msg(client, chat_id, f"💰 {user_str}: {money}", delay=10)
         else:
-            await asyncio.sleep(0.5)
-            bot_msg = await self._get_msg(client, self.bot_name, bot_msg.id)
-            if not bot_msg:
+            await self._temp_msg(client, chat_id, "❌ Не удалось найти деньги", delay=10)
+
+    async def bfgautofarmcmd(self, message):
+        client = message._client
+        chat_id = message.chat.id
+        sender = self._get_sender_id(message)
+        await message.delete()
+        if sender != self.OWNER_ID:
+            await self._temp_msg(client, chat_id, "⛔ Только создатель")
+            return
+        text = message.text.strip()
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            await self._temp_msg(client, chat_id, "❌ .bfgautofarm <минуты>/стоп")
+            return
+        arg = parts[1].strip().lower()
+        if arg in ("стоп", "stop", "0"):
+            self.auto_farm_active = False
+            if self.mining_active:
+                self.mining_active = False
+                if self.mining_task:
+                    self.mining_task.cancel()
+                    self.mining_task = None
+            if self.auto_farm_task:
+                self.auto_farm_task.cancel()
+                self.auto_farm_task = None
+            await self._temp_msg(client, chat_id, "⏰ Автофарм: стоп", delay=4)
+            return
+        try:
+            minutes = int(arg)
+            if minutes < 1:
+                await self._temp_msg(client, chat_id, "❌ Минимум 1 минута")
                 return
+        except:
+            await self._temp_msg(client, chat_id, "❌ Укажите число (минуты)")
+            return
+        seconds = minutes * 60
+        if self.auto_farm_task:
+            self.auto_farm_task.cancel()
+        self.auto_farm_active = True
+        self.auto_farm_task = asyncio.ensure_future(self._auto_farm_loop(client, chat_id, seconds))
+        await self._temp_msg(client, chat_id, f"⏰ Автофарм: каждые {minutes} мин", delay=4)
 
-        bought = 0
-        for _ in range(count):
-            if not await self._click_button(bot_msg, "⬆️Купить видеокарту"):
-                break
-            bought += 1
-            await asyncio.sleep(0.4)
-            bot_msg = await self._get_msg(client, self.bot_name, bot_msg.id)
-            if not bot_msg:
-                break
-
-        await self._temp_msg(client, chat_id, f"✅ Видеокарт: {bought}/{count}", delay=5)
-
-    async def _farm_cycle_loop(self, client, chat_id, interval):
-        while True:
+    async def _auto_farm_loop(self, client, chat_id, seconds):
+        while self.auto_farm_active:
             try:
-                await self._farm_buy_cards(client, chat_id, 1)
-            except Exception as e:
-                await self._temp_msg(client, chat_id, f"🚫 Ошибка: {e}", delay=8)
-            await asyncio.sleep(interval)
+                self.mining_active = True
+                self.mining_task = asyncio.ensure_future(self._mining_loop(client))
+                await asyncio.sleep(30)
+                self.mining_active = False
+                if self.mining_task:
+                    self.mining_task.cancel()
+                    self.mining_task = None
+            except:
+                pass
+            await asyncio.sleep(seconds - 30 if seconds > 30 else seconds)
 
     async def _mining_loop(self, client):
         while self.mining_active:
@@ -199,47 +326,6 @@ class BFGCommandsMod(loader.Module):
             except:
                 pass
             await asyncio.sleep(1)
-
-    async def _click_button(self, msg, text):
-        if not msg or not msg.reply_markup:
-            return False
-        for row in msg.reply_markup.inline_keyboard:
-            for btn in row:
-                if btn.text == text:
-                    try:
-                        await msg.click(btn.data)
-                        return True
-                    except:
-                        return False
-        return False
-
-    async def _wait_for_bot_response(self, client, chat_id, timeout=10):
-        try:
-            bot = await client.get_entity(self.bot_name)
-            bot_id = bot.id
-        except:
-            return None
-        pre = await client.get_messages(chat_id, limit=1)
-        pre_id = pre[0].id if pre else 0
-        for _ in range(timeout * 2):
-            await asyncio.sleep(0.5)
-            msgs = await client.get_messages(chat_id, limit=5)
-            if not msgs:
-                continue
-            for m in msgs:
-                if m.id > pre_id and m.from_user and m.from_user.id == bot_id:
-                    return m
-                s = self._get_sender_id(m)
-                if s == bot_id and m.id > pre_id:
-                    return m
-            pre_id = max(m.id for m in msgs)
-        return None
-
-    async def _get_msg(self, client, chat_id, msg_id):
-        try:
-            return await client.get_messages(chat_id, msg_id)
-        except:
-            return None
 
     async def _wait_for_profile_id(self, client, tg_id):
         try:
@@ -281,15 +367,6 @@ class BFGCommandsMod(loader.Module):
             return int(re.search(r'\d+', str(text)).group())
         except:
             return None
-
-    @staticmethod
-    def _parse_time(s):
-        match = re.fullmatch(r'(\d+)\s*([смчд])', s)
-        if not match:
-            return None
-        num = int(match.group(1))
-        mult = {'с': 1, 'м': 60, 'ч': 3600, 'д': 86400}
-        return num * mult.get(match.group(2), 0)
 
     @staticmethod
     async def _temp_msg(client, chat_id, text, delay=5):
