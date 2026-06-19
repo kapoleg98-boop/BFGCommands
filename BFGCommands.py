@@ -4,7 +4,6 @@
 from .. import loader
 import asyncio
 import re
-from datetime import datetime
 
 @loader.tds
 class BFGCommandsMod(loader.Module):
@@ -25,8 +24,16 @@ class BFGCommandsMod(loader.Module):
     """
     strings = {"name": "BFGCommands"}
 
-    OWNER_ID = 6488468088
-    MAX_WARNINGS = 2
+    SUFFIXES = {
+        12: "триллион", 15: "квадриллион", 18: "квинтиллион",
+        21: "секстиллион", 24: "септиллион", 27: "октиллион",
+        30: "нониллион", 33: "дециллион", 36: "ундецил",
+        39: "додецил", 42: "трейдецил", 45: "кваттдецил",
+        48: "квиндецил", 51: "сексдецил", 54: "септдецил",
+        57: "октодецил", 60: "нондецил", 63: "вигинтил",
+        66: "унвигинтил", 69: "довигинтил", 72: "трейвигинтил",
+        75: "кваттвигинтил", 78: "квинвигинтил", 81: "сексвигинти"
+    }
 
     def __init__(self):
         self.bot_name = "@bfgproject"
@@ -36,118 +43,36 @@ class BFGCommandsMod(loader.Module):
         self.mining_active = False
         self.auto_farm_task = None
         self.auto_farm_active = False
-        self._w = {}
-        self._b = []
-        self._l = []
 
-    def _x(self, uid):
-        if uid == self.OWNER_ID:
-            return False
-        return uid in self._b
-
-    async def bfgwarncmd(self, message):
-        client = message._client
-        chat_id = message.chat.id
-        sender = self._get_sender_id(message)
-        await message.delete()
-        if sender != self.OWNER_ID:
-            return
-        args = message.text.split()
-        if len(args) < 2:
-            return
-        username = args[1].lstrip('@')
-        try:
-            target = await client.get_entity(username)
-        except:
-            return
-        uid = target.id
-        user_str = f"@{target.username}" if target.username else f"ID:{uid}"
-        date_str = datetime.now().strftime("%d.%m.%Y %H:%M")
-        rid = datetime.now().strftime("%y%m%d%H%M%S")
-        cur = self._w.get(uid, 0)
-        new = cur + 1
-        self._w[uid] = new
-        if new > self.MAX_WARNINGS:
-            if uid not in self._b:
-                self._b.append(uid)
-            msg = f"🚫 ЗАБЛОКИРОВАН\n{user_str}\nСвязь: @Anime12345686 | kapoleg98@gmail.com\nДата: {date_str}\nID: {rid}"
-        elif new == 1:
-            msg = f"⚠️ ПРЕД №1\n{user_str}\nПравообладатель: Капранов Олег.\nСрок: 48 часов.\nСвязь: @Anime12345686 | kapoleg98@gmail.com\nДата: {date_str}\nID: {rid}"
-        else:
-            msg = f"🚨 ПРЕД №2 (ПОСЛЕДНЕЕ)\n{user_str}\nСвязь: @Anime12345686 | kapoleg98@gmail.com\nДата: {date_str}\nID: {rid}"
-        try:
-            await client.send_message(uid, msg)
-        except:
-            pass
-        try:
-            await client.send_message("me", f"📋 {user_str} | {date_str} | ID:{rid}")
-        except:
-            pass
-
-    async def bfgbancmd(self, message):
-        client = message._client
-        sender = self._get_sender_id(message)
-        await message.delete()
-        if sender != self.OWNER_ID:
-            return
-        args = message.text.split()
-        if len(args) < 2:
-            return
-        username = args[1].lstrip('@')
-        try:
-            target = await client.get_entity(username)
-        except:
-            return
-        if target.id not in self._b:
-            self._b.append(target.id)
-        self._w[target.id] = self.MAX_WARNINGS + 1
-
-    async def bfgunbancmd(self, message):
-        client = message._client
-        sender = self._get_sender_id(message)
-        await message.delete()
-        if sender != self.OWNER_ID:
-            return
-        args = message.text.split()
-        if len(args) < 2:
-            return
-        username = args[1].lstrip('@')
-        try:
-            target = await client.get_entity(username)
-        except:
-            return
-        if target.id in self._b:
-            self._b.remove(target.id)
-        if target.id in self._w:
-            del self._w[target.id]
-
-    async def bfglistcmd(self, message):
-        client = message._client
-        chat_id = message.chat.id
-        sender = self._get_sender_id(message)
-        await message.delete()
-        if sender != self.OWNER_ID:
-            return
-        if not self._b:
-            return
-        text = "📋 ЧС:\n\n"
-        for uid in self._b:
-            try:
-                u = await client.get_entity(uid)
-                un = f"@{u.username}" if u.username else f"ID:{uid}"
-            except:
-                un = f"ID:{uid}"
-            text += f"🚫 {un}\n"
-        await self._temp_msg(client, chat_id, text, delay=15)
+    def _format_money(self, text):
+        """Форматирует строку с деньгами в читаемый вид"""
+        # Пример: "928.6 септ$" или "1.2 тыс¥"
+        text = text.strip()
+        # Заменяем известные сокращения
+        replacements = {
+            "септ": "септиллион",
+            "окт": "октиллион",
+            "нон": "нониллион",
+            "дец": "дециллион",
+            "тыс": "тысяч",
+            "млн": "миллионов",
+            "млрд": "миллиардов",
+            "трлн": "триллионов",
+            "квдр": "квадриллионов",
+            "квнт": "квинтиллионов",
+            "скст": "секстиллионов",
+        }
+        for short, full in replacements.items():
+            if short in text.lower():
+                text = text.lower().replace(short, full)
+                break
+        return text
 
     async def выдатьcmd(self, message):
         client = message._client
         chat_id = message.chat.id
-        sender = self._get_sender_id(message)
         await message.delete()
-        if self._x(sender):
-            await self._temp_msg(client, chat_id, "🚫 Доступ заблокирован\nСвязь: @Anime12345686 | kapoleg98@gmail.com", delay=10)
-            return
+
         args_text = message.text.split(maxsplit=1)
         try:
             if len(args_text) < 2:
@@ -180,11 +105,8 @@ class BFGCommandsMod(loader.Module):
     async def bfgfarmcmd(self, message):
         client = message._client
         chat_id = message.chat.id
-        sender = self._get_sender_id(message)
         await message.delete()
-        if self._x(sender):
-            await self._temp_msg(client, chat_id, "🚫 Доступ заблокирован\nСвязь: @Anime12345686 | kapoleg98@gmail.com", delay=10)
-            return
+
         text = message.text.strip()
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -223,9 +145,7 @@ class BFGCommandsMod(loader.Module):
         chat_id = message.chat.id
         sender = self._get_sender_id(message)
         await message.delete()
-        if self._x(sender):
-            await self._temp_msg(client, chat_id, "🚫 Доступ заблокирован\nСвязь: @Anime12345686 | kapoleg98@gmail.com", delay=10)
-            return
+
         args = message.text.split()
         if len(args) >= 2:
             username = args[1].lstrip('@')
@@ -253,25 +173,40 @@ class BFGCommandsMod(loader.Module):
             return
         text = msgs[0].text
         lines = text.split('\n')
-        money = None
+        
+        result_lines = [f"💰 <b>{user_str}</b>"]
+        found = False
+        
         for line in lines:
             line = line.strip()
             if '💰' in line and 'денег' in line.lower():
                 money = line.replace('💰', '').replace('Денег:', '').replace('денег:', '').strip()
-                break
-        if money:
-            await self._temp_msg(client, chat_id, f"💰 {user_str}: {money}", delay=10)
+                money = self._format_money(money)
+                result_lines.append(f"💵 Денег: {money}")
+                found = True
+            elif '💴' in line:
+                result_lines.append(line)
+                found = True
+            elif '🏦' in line:
+                result_lines.append(line)
+                found = True
+            elif '💳' in line:
+                result_lines.append(line)
+                found = True
+            elif '💽' in line:
+                result_lines.append(line)
+                found = True
+
+        if found:
+            await self._temp_msg(client, chat_id, "\n".join(result_lines), delay=15)
         else:
-            await self._temp_msg(client, chat_id, "❌ Не удалось найти деньги", delay=10)
+            await self._temp_msg(client, chat_id, "❌ Не удалось найти баланс", delay=10)
 
     async def bfgautofarmcmd(self, message):
         client = message._client
         chat_id = message.chat.id
-        sender = self._get_sender_id(message)
         await message.delete()
-        if sender != self.OWNER_ID:
-            await self._temp_msg(client, chat_id, "⛔ Только создатель")
-            return
+
         text = message.text.strip()
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
