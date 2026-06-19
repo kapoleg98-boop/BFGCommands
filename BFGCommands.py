@@ -24,17 +24,19 @@ class BFGCommandsMod(loader.Module):
     """
     strings = {"name": "BFGCommands"}
 
-    SUFFIXES = [
-        (81, "сексвигинти"), (78, "квинвигинти"), (75, "кваттвигинти"),
-        (72, "трейвигинти"), (69, "довигинти"), (66, "унвигинти"),
-        (63, "вигинти"), (60, "нондецил"), (57, "октодецил"),
-        (54, "септдецил"), (51, "сексдецил"), (48, "квиндецил"),
-        (45, "кваттдецил"), (42, "трейдецил"), (39, "додецил"),
-        (36, "ундецил"), (33, "дециллион"), (30, "нониллион"),
-        (27, "октиллион"), (24, "септиллион"), (21, "секстиллион"),
-        (18, "квинтиллион"), (15, "квадриллион"), (12, "триллион"),
-        (9, "миллиард"), (6, "миллион"), (3, "тысяч"), (0, "")
-    ]
+    SUFFIX_TO_EXP = {
+        "тысяч": 3, "тыс": 3, "миллион": 6, "млн": 6,
+        "миллиард": 9, "млрд": 9, "триллион": 12, "трлн": 12,
+        "квадриллион": 15, "квдр": 15, "квинтиллион": 18, "квнт": 18,
+        "секстиллион": 21, "скст": 21, "септиллион": 24, "септ": 24,
+        "октиллион": 27, "окт": 27, "нониллион": 30, "нон": 30,
+        "дециллион": 33, "дец": 33, "ундецил": 36, "додецил": 39,
+        "трейдецил": 42, "кваттдецил": 45, "квиндецил": 48,
+        "сексдецил": 51, "септдецил": 54, "октодецил": 57,
+        "нондецил": 60, "вигинтил": 63, "унвигинтил": 66,
+        "довигинтил": 69, "трейвигинтил": 72, "кваттвигинтил": 75,
+        "квинвигинтил": 78, "сексвигинти": 81
+    }
 
     def __init__(self):
         self.bot_name = "@bfgproject"
@@ -45,27 +47,47 @@ class BFGCommandsMod(loader.Module):
         self.auto_farm_task = None
         self.auto_farm_active = False
 
-    def _parse_e_value(self, text):
-        """Парсит число с экспонентой: 1e12, 1.5e15, 1e26$"""
-        text = text.strip().lower().replace('$', '').replace('₽', '').replace('€', '').replace('¥', '').replace('฿', '').replace(' ', '')
-        if 'e' not in text:
+    def _to_e_notation(self, text):
+        """Преобразует '928.6 септ$' в '9.286e26'"""
+        text = text.strip().lower()
+        # Убираем символы валют
+        for ch in ['$', '₽', '€', '¥', '฿']:
+            text = text.replace(ch, '')
+        text = text.strip()
+        
+        # Ищем число и суффикс
+        parts = text.split()
+        if len(parts) < 2:
+            # Может быть уже в e-нотации
+            if 'e' in text:
+                return text
             return text
+        
         try:
-            parts = text.split('e')
-            base = float(parts[0])
-            exp = int(parts[1])
-            
-            # Ищем ближайший суффикс
-            for e_val, suffix in self.SUFFIXES:
-                if exp >= e_val:
-                    if e_val == 0:
-                        return f"{base:.1f}"
-                    divisor = 10 ** e_val
-                    value = (base * (10 ** exp)) / divisor
-                    return f"{value:.1f} {suffix}"
-            return f"{base:.1f}e{exp}"
+            number = float(parts[0])
         except:
             return text
+        
+        suffix = parts[1].rstrip('ов')  # убираем окончание мн.числа
+        
+        exp = None
+        for suf, e_val in self.SUFFIX_TO_EXP.items():
+            if suffix.startswith(suf):
+                exp = e_val
+                break
+        
+        if exp is not None:
+            result = number * (10 ** exp)
+            # Форматируем в e-нотацию
+            if result >= 10:
+                e_exp = 0
+                while result >= 10:
+                    result /= 10
+                    e_exp += 1
+                return f"{result:.3f}e{e_exp}"
+            return f"{number}e{exp}"
+        
+        return text
 
     async def выдатьcmd(self, message):
         client = message._client
@@ -179,7 +201,7 @@ class BFGCommandsMod(loader.Module):
                 money = line.replace('💰', '').replace('Денег:', '').replace('денег:', '').strip()
                 break
         if money:
-            formatted = self._parse_e_value(money)
+            formatted = self._to_e_notation(money)
             await self._temp_msg(client, chat_id, f"💰 {user_str}: {formatted}", delay=10)
         else:
             await self._temp_msg(client, chat_id, "❌ Не удалось найти деньги", delay=10)
