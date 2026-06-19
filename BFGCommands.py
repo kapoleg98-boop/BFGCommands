@@ -75,11 +75,16 @@ class BFGCommandsMod(loader.Module):
                 break
         
         if exp is not None:
-            result = number * (10 ** exp)
-            e_exp = 0
-            while result >= 10:
-                result /= 10
-                e_exp += 1
+            result = number
+            e_exp = exp
+            if result >= 10:
+                while result >= 10:
+                    result /= 10
+                    e_exp += 1
+            elif result < 1 and result > 0:
+                while result < 1:
+                    result *= 10
+                    e_exp -= 1
             return f"{result:.3f}e{e_exp}"
         
         return text
