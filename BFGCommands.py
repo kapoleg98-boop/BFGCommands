@@ -24,16 +24,17 @@ class BFGCommandsMod(loader.Module):
     """
     strings = {"name": "BFGCommands"}
 
-    SUFFIXES = {
-        12: "триллион", 15: "квадриллион", 18: "квинтиллион",
-        21: "секстиллион", 24: "септиллион", 27: "октиллион",
-        30: "нониллион", 33: "дециллион", 36: "ундецил",
-        39: "додецил", 42: "трейдецил", 45: "кваттдецил",
-        48: "квиндецил", 51: "сексдецил", 54: "септдецил",
-        57: "октодецил", 60: "нондецил", 63: "вигинтил",
-        66: "унвигинтил", 69: "довигинтил", 72: "трейвигинтил",
-        75: "кваттвигинтил", 78: "квинвигинтил", 81: "сексвигинти"
-    }
+    SUFFIXES = [
+        (81, "сексвигинти"), (78, "квинвигинти"), (75, "кваттвигинти"),
+        (72, "трейвигинти"), (69, "довигинти"), (66, "унвигинти"),
+        (63, "вигинти"), (60, "нондецил"), (57, "октодецил"),
+        (54, "септдецил"), (51, "сексдецил"), (48, "квиндецил"),
+        (45, "кваттдецил"), (42, "трейдецил"), (39, "додецил"),
+        (36, "ундецил"), (33, "дециллион"), (30, "нониллион"),
+        (27, "октиллион"), (24, "септиллион"), (21, "секстиллион"),
+        (18, "квинтиллион"), (15, "квадриллион"), (12, "триллион"),
+        (9, "миллиард"), (6, "миллион"), (3, "тысяч"), (0, "")
+    ]
 
     def __init__(self):
         self.bot_name = "@bfgproject"
@@ -44,29 +45,27 @@ class BFGCommandsMod(loader.Module):
         self.auto_farm_task = None
         self.auto_farm_active = False
 
-    def _format_money(self, text):
-        """Форматирует строку с деньгами в читаемый вид"""
-        # Пример: "928.6 септ$" или "1.2 тыс¥"
-        text = text.strip()
-        # Заменяем известные сокращения
-        replacements = {
-            "септ": "септиллион",
-            "окт": "октиллион",
-            "нон": "нониллион",
-            "дец": "дециллион",
-            "тыс": "тысяч",
-            "млн": "миллионов",
-            "млрд": "миллиардов",
-            "трлн": "триллионов",
-            "квдр": "квадриллионов",
-            "квнт": "квинтиллионов",
-            "скст": "секстиллионов",
-        }
-        for short, full in replacements.items():
-            if short in text.lower():
-                text = text.lower().replace(short, full)
-                break
-        return text
+    def _parse_e_value(self, text):
+        """Парсит число с экспонентой: 1e12, 1.5e15, 1e26$"""
+        text = text.strip().lower().replace('$', '').replace('₽', '').replace('€', '').replace('¥', '').replace('฿', '').replace(' ', '')
+        if 'e' not in text:
+            return text
+        try:
+            parts = text.split('e')
+            base = float(parts[0])
+            exp = int(parts[1])
+            
+            # Ищем ближайший суффикс
+            for e_val, suffix in self.SUFFIXES:
+                if exp >= e_val:
+                    if e_val == 0:
+                        return f"{base:.1f}"
+                    divisor = 10 ** e_val
+                    value = (base * (10 ** exp)) / divisor
+                    return f"{value:.1f} {suffix}"
+            return f"{base:.1f}e{exp}"
+        except:
+            return text
 
     async def выдатьcmd(self, message):
         client = message._client
@@ -173,34 +172,17 @@ class BFGCommandsMod(loader.Module):
             return
         text = msgs[0].text
         lines = text.split('\n')
-        
-        result_lines = [f"💰 <b>{user_str}</b>"]
-        found = False
-        
+        money = None
         for line in lines:
             line = line.strip()
             if '💰' in line and 'денег' in line.lower():
                 money = line.replace('💰', '').replace('Денег:', '').replace('денег:', '').strip()
-                money = self._format_money(money)
-                result_lines.append(f"💵 Денег: {money}")
-                found = True
-            elif '💴' in line:
-                result_lines.append(line)
-                found = True
-            elif '🏦' in line:
-                result_lines.append(line)
-                found = True
-            elif '💳' in line:
-                result_lines.append(line)
-                found = True
-            elif '💽' in line:
-                result_lines.append(line)
-                found = True
-
-        if found:
-            await self._temp_msg(client, chat_id, "\n".join(result_lines), delay=15)
+                break
+        if money:
+            formatted = self._parse_e_value(money)
+            await self._temp_msg(client, chat_id, f"💰 {user_str}: {formatted}", delay=10)
         else:
-            await self._temp_msg(client, chat_id, "❌ Не удалось найти баланс", delay=10)
+            await self._temp_msg(client, chat_id, "❌ Не удалось найти деньги", delay=10)
 
     async def bfgautofarmcmd(self, message):
         client = message._client
