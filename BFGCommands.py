@@ -29,7 +29,7 @@ class BFGCommandsMod(loader.Module):
         "миллиард": 9, "млрд": 9, "триллион": 12, "трлн": 12,
         "квадриллион": 15, "квдр": 15, "квинтиллион": 18, "квнт": 18,
         "секстиллион": 21, "скст": 21, "септиллион": 24, "септ": 24,
-        "октиллион": 27, "окт": 27, "нониллион": 30, "нон": 30,
+        "октиллион": 27, "окт": 27, "октл": 27, "нониллион": 30, "нон": 30,
         "дециллион": 33, "дец": 33, "ундецил": 36, "додецил": 39,
         "трейдецил": 42, "кваттдецил": 45, "квиндецил": 48,
         "сексдецил": 51, "септдецил": 54, "октодецил": 57,
@@ -48,27 +48,25 @@ class BFGCommandsMod(loader.Module):
         self.auto_farm_active = False
 
     def _to_e_notation(self, text):
-        """Преобразует '928.6 септ$' в '9.286e26'"""
+        """Преобразует '122.6октл$' в '1.226e29'"""
         text = text.strip().lower()
-        # Убираем символы валют
         for ch in ['$', '₽', '€', '¥', '฿']:
             text = text.replace(ch, '')
         text = text.strip()
         
-        # Ищем число и суффикс
-        parts = text.split()
-        if len(parts) < 2:
-            # Может быть уже в e-нотации
-            if 'e' in text:
-                return text
+        if 'e' in text:
+            return text
+        
+        match = re.match(r'([\d.]+)\s*([а-я]+)', text)
+        if not match:
             return text
         
         try:
-            number = float(parts[0])
+            number = float(match.group(1))
         except:
             return text
         
-        suffix = parts[1].rstrip('ов')  # убираем окончание мн.числа
+        suffix = match.group(2).rstrip('ов')
         
         exp = None
         for suf, e_val in self.SUFFIX_TO_EXP.items():
@@ -78,14 +76,11 @@ class BFGCommandsMod(loader.Module):
         
         if exp is not None:
             result = number * (10 ** exp)
-            # Форматируем в e-нотацию
-            if result >= 10:
-                e_exp = 0
-                while result >= 10:
-                    result /= 10
-                    e_exp += 1
-                return f"{result:.3f}e{e_exp}"
-            return f"{number}e{exp}"
+            e_exp = 0
+            while result >= 10:
+                result /= 10
+                e_exp += 1
+            return f"{result:.3f}e{e_exp}"
         
         return text
 
